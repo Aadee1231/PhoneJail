@@ -20,6 +20,22 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-audio",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow PhoneJail to access device motion to detect when your phone is picked up."
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow PhoneJail to use your camera to place your virtual jail on a physical surface."
+        }
+      ]
+    ]
   }
 }
