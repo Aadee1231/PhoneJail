@@ -13,12 +13,20 @@ import { Settings, Sensitivity, WarningGrace } from './types';
 // but more battery/CPU usage. 100ms (10Hz) is plenty for this use case.
 export const SENSOR_UPDATE_INTERVAL_MS = 100;
 
-// --- Calibration ---
-// Total countdown (seconds) shown to the user before the baseline is locked in.
-export const CALIBRATION_SECONDS = 5;
-// We only average samples from the last N seconds of calibration so the user
-// has time to actually put the phone down and let it settle first.
-export const CALIBRATION_SETTLE_SECONDS = 2;
+// --- Phone placement detection (replaces the old fixed 5s calibration) ---
+// The phone must be approximately flat (face-down or face-up) for placement
+// to count: |gravity z| / |gravity| must exceed this fraction. Sensor axis
+// sign conventions differ subtly between iOS and Android, so we accept both
+// flat orientations rather than strictly face-down; verify/tune on device.
+export const PLACEMENT_FLAT_MIN_FRACTION = 0.85;
+// Smoothed linear-acceleration magnitude (m/s^2) below which the phone is
+// considered stationary while awaiting placement.
+export const PLACEMENT_MOTION_MAX_MPS2 = 0.2;
+// The flat + stationary conditions must hold continuously for this long
+// before we lock the jail and start the session.
+export const PLACEMENT_STABILIZE_MS = 2000;
+// How long the "JAIL LOCKED" confirmation is shown before the timer starts.
+export const LOCK_DISPLAY_MS = 1400;
 
 // --- Smoothing ---
 // Exponential moving average factor applied to raw sensor readings, in the
@@ -49,8 +57,9 @@ export const MOTION_RECOVER_MPS2 = 0.25;
 // warning before we cancel the warning and resume the session normally.
 export const WARNING_RECOVER_SUSTAIN_MS = 300;
 // How long the phone must remain within the recovery thresholds while in
-// Jailbreak before the alarm stops and the session resumes.
-export const JAILBREAK_STABILIZE_MS = 1200;
+// Jailbreak before the alarm stops and the session resumes. Also shown as
+// the "N to recover" countdown on the Jailbreak screen.
+export const JAILBREAK_STABILIZE_MS = 3000;
 // How long the "Back in jail." success message is shown before resuming the
 // active timer.
 export const RETURNED_DISPLAY_MS = 1200;
@@ -58,6 +67,11 @@ export const RETURNED_DISPLAY_MS = 1200;
 // --- Alarm feedback ---
 // Interval (ms) between repeated haptic pulses while in the Jailbreak state.
 export const JAILBREAK_HAPTIC_INTERVAL_MS = 500;
+
+// --- Strikes ---
+// Each full Jailbreak is one strike. Reaching this many strikes immediately
+// fails the session. Hard mode overrides this to 1.
+export const MAX_STRIKES = 3;
 
 // --- Sensitivity ---
 // Multiplier applied to the base trigger/recovery thresholds. Lower values

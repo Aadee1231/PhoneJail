@@ -6,9 +6,8 @@ import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { useJailSession } from './src/useJailSession';
 import { useSettings } from './src/hooks/useSettings';
 import { useSessionStore } from './src/hooks/useSessionStore';
-import { CameraJailPlacement } from './src/components/CameraJailPlacement';
+import { ARJailPlacement } from './src/ar/ARJailPlacement';
 import { HomeScreen } from './src/screens/HomeScreen';
-import { CalibrationScreen } from './src/screens/CalibrationScreen';
 import { ActiveScreen } from './src/screens/ActiveScreen';
 import { WarningScreen } from './src/screens/WarningScreen';
 import { JailbreakScreen } from './src/screens/JailbreakScreen';
@@ -22,11 +21,11 @@ const warningBeepSound = require('./assets/sounds/warning_beep.wav');
 
 /**
  * Top-level flow, separate from the internal jail session state machine:
- * home -> placing (camera) -> session (calibrating/active/warning/jailbreak/
- * returned/completed/failed) -> back to home. History/Settings are reachable
- * from Home and from the end-of-session screen.
+ * home -> ar (placement + phone placement + lock) -> session (active/warning/
+ * jailbreak/returned/completed/failed) -> home. History/Settings are
+ * reachable from Home and the end-of-session screen.
  */
-type Flow = 'home' | 'placing' | 'session' | 'history' | 'settings';
+type Flow = 'home' | 'ar' | 'session' | 'history' | 'settings';
 
 export default function App() {
   const [flow, setFlow] = useState<Flow>('home');
@@ -41,14 +40,16 @@ export default function App() {
     state,
     durationMinutes,
     setDurationMinutes,
-    calibrationSecondsLeft,
     remainingSeconds,
     debug,
     shouldAlarm,
     warningDeadline,
     stats,
+    strikes,
+    maxStrikes,
     startJail,
     endJail,
+    cancelPlacement,
     dismissEnd,
   } = session;
 
@@ -95,12 +96,14 @@ export default function App() {
     return () => clearInterval(id);
   }, [state, warningDeadline]);
 
-  // Keep the top-level flow in sync with the session lifecycle.
+  // Keep the top-level flow in sync with the session lifecycle: the AR view
+  // owns 'idle'/'awaiting-placement'/'locking'; everything after lock is the
+  // session UI.
   useEffect(() => {
-    if (state === 'idle' && flow === 'session') {
-      setFlow('home');
-    } else if (state !== 'idle' && flow === 'placing') {
+    if (flow === 'ar' && (state === 'active' || state === 'completed' || state === 'failed')) {
       setFlow('session');
+    } else if (flow === 'session' && state === 'idle') {
+      setFlow('home');
     }
   }, [state, flow]);
 
@@ -109,12 +112,12 @@ export default function App() {
 
   const handleEnterJail = (minutes: number) => {
     setDurationMinutes(minutes);
-    setFlow('placing');
+    setFlow('ar');
   };
 
-  const handlePlaced = () => {
-    startJail(durationMinutes);
-    setFlow('session');
+  const handleCancelAR = () => {
+    cancelPlacement();
+    setFlow('home');
   };
 
   const handleDone = () => {
@@ -129,8 +132,6 @@ export default function App() {
 
   const renderSession = () => {
     switch (state) {
-      case 'calibrating':
-        return <CalibrationScreen secondsLeft={calibrationSecondsLeft} />;
       case 'active':
         return (
           <ActiveScreen
@@ -154,6 +155,8 @@ export default function App() {
         return (
           <JailbreakScreen
             remainingSeconds={remainingSeconds}
+            strikes={strikes}
+            maxStrikes={maxStrikes}
             debug={debug}
             endJail={endJail}
           />
@@ -177,11 +180,15 @@ export default function App() {
 
   const isEmergency = state === 'jailbreak' || state === 'failed';
 
-  if (flow === 'placing') {
+  if (flow === 'ar') {
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
-        <CameraJailPlacement onPlaced={handlePlaced} />
+        <ARJailPlacement
+          sessionState={state}
+          onPlaceJail={() => startJail(durationMinutes)}
+          onCancel={handleCancelAR}
+        />
       </View>
     );
   }

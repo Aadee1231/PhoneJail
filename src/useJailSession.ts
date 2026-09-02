@@ -5,8 +5,10 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import {
   SENSOR_UPDATE_INTERVAL_MS,
-  CALIBRATION_SECONDS,
-  CALIBRATION_SETTLE_SECONDS,
+  PLACEMENT_FLAT_MIN_FRACTION,
+  PLACEMENT_MOTION_MAX_MPS2,
+  PLACEMENT_STABILIZE_MS,
+  LOCK_DISPLAY_MS,
   SMOOTHING_ALPHA,
   TILT_TRIGGER_DEGREES,
   MOTION_TRIGGER_MPS2,
@@ -18,6 +20,7 @@ import {
   RETURNED_DISPLAY_MS,
   JAILBREAK_HAPTIC_INTERVAL_MS,
   SENSITIVITY_MULTIPLIER,
+  MAX_STRIKES,
 } from './constants';
 import { DebugSnapshot, JailState, SessionRecord, SessionStats, Settings } from './types';
 
@@ -43,10 +46,14 @@ function angleBetween(a: Vec3, b: Vec3): number {
 }
 
 /**
- * Encapsulates the whole "Virtual Jail" motion-detection state machine.
+ * The "Virtual Jail" session state machine.
  *
- * Thresholds are multiplied by the sensitivity factor at runtime.
- * Settings are read from a ref so sensor subscription never needs to restart.
+ * Lifecycle: idle -> awaiting-placement (user physically puts the phone
+ * face-down inside the AR jail) -> locking ("JAIL LOCKED") -> active ->
+ * warning/jailbreak/returned loops -> completed | failed.
+ *
+ * Movement thresholds are multiplied by the sensitivity factor at runtime.
+ * Settings are read from a ref so the sensor subscription never restarts.
  */
 export function useJailSession(
   settings: Settings,
@@ -59,7 +66,6 @@ export function useJailSession(
 
   const [state, setState] = useState<JailState>('idle');
   const [durationMinutes, setDurationMinutes] = useState<number>(15);
-  const [calibrationSecondsLeft, setCalibrationSecondsLeft] = useState<number>(CALIBRATION_SECONDS);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [debug, setDebug] = useState<DebugSnapshot>({
     gravity: ZERO_VEC,
@@ -86,7 +92,8 @@ export function useJailSession(
   // latest values without re-subscribing on every state change.
   const stateRef = useRef<JailState>('idle');
   const baselineGravityRef = useRef<Vec3>({ x: 0, y: 0, z: 1 });
-  const calibrationSamplesRef = useRef<Vec3[]>([]);
+  const placementSamplesRef = useRef<Vec3[]>([]);
+  const placementHoldStartRef = useRef<number | null>(null);
   const smoothedTiltRef = useRef(0);
   const smoothedMotionRef = useRef(0);
   const triggerHoldStartRef = useRef<number | null>(null);
@@ -98,10 +105,10 @@ export function useJailSession(
   const jailbreakCountRef = useRef(0);
 
   const motionSubRef = useRef<ReturnType<typeof DeviceMotion.addListener> | null>(null);
-  const calibrationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hapticIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const returnedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -113,12 +120,12 @@ export function useJailSession(
   }, []);
 
   const clearAllTimers = useCallback(() => {
-    if (calibrationIntervalRef.current) clearInterval(calibrationIntervalRef.current);
     if (sessionIntervalRef.current) clearInterval(sessionIntervalRef.current);
     if (hapticIntervalRef.current) clearInterval(hapticIntervalRef.current);
-    calibrationIntervalRef.current = null;
+    if (lockTimeoutRef.current) clearTimeout(lockTimeoutRef.current);
     sessionIntervalRef.current = null;
     hapticIntervalRef.current = null;
+    lockTimeoutRef.current = null;
   }, []);
 
   const stopMotionListener = useCallback(() => {
@@ -137,10 +144,9 @@ export function useJailSession(
       }
 
       const startTime = startTimeRef.current ?? Date.now();
-      const completedSeconds = Math.max(
-        0,
-        Math.round((Date.now() - startTime) / 1000)
-      );
+      const completedSeconds = startTimeRef.current
+        ? Math.max(0, Math.round((Date.now() - startTime) / 1000))
+        : 0;
 
       const record: SessionRecord = {
         id: String(Date.now()),
@@ -166,6 +172,9 @@ export function useJailSession(
     const haptics = settingsRef.current.hapticsEnabled;
     if (state === 'warning' && haptics) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+    if (state === 'locking' && haptics) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     if (state === 'returned') {
       if (haptics) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -212,6 +221,17 @@ export function useJailSession(
     };
   }, [state]);
 
+  // Strike system: each full jailbreak is a strike; reaching the limit
+  // (1 in hard mode) immediately fails the session.
+  useEffect(() => {
+    if (state === 'jailbreak') {
+      const maxStrikes = settingsRef.current.hardMode ? 1 : MAX_STRIKES;
+      if (jailbreakCountRef.current >= maxStrikes) {
+        finishSession('failed', 'failed');
+      }
+    }
+  }, [state, finishSession]);
+
   // Track elapsed focus time from the live countdown.
   useEffect(() => {
     if (state === 'active' || state === 'warning' || state === 'jailbreak' || state === 'returned') {
@@ -222,6 +242,62 @@ export function useJailSession(
     }
   }, [remainingSeconds, state]);
 
+  const beginActiveSession = useCallback(() => {
+    const totalSeconds = selectedDurationRef.current * 60;
+    setRemainingSeconds(totalSeconds);
+    const start = Date.now();
+    startTimeRef.current = start;
+    setStats((s) => ({ ...s, startTime: start, elapsedFocusSeconds: 0 }));
+    setJailState('active');
+
+    sessionIntervalRef.current = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 0) return 0;
+        const next = prev - 1;
+        if (next === 0) {
+          if (sessionIntervalRef.current) clearInterval(sessionIntervalRef.current);
+          sessionIntervalRef.current = null;
+          finishSession('completed', 'completed');
+        }
+        return next;
+      });
+    }, 1000);
+  }, [setJailState, finishSession]);
+
+  /**
+   * Called from the motion listener once the phone has been flat + stationary
+   * long enough while awaiting placement. Captures the resting baseline from
+   * the settled samples, shows "JAIL LOCKED", then starts the timer.
+   */
+  const lockJail = useCallback(() => {
+    const samples = placementSamplesRef.current;
+    let avg: Vec3 = { x: 0, y: 0, z: 0 };
+    if (samples.length > 0) {
+      avg = samples.reduce(
+        (acc, s) => ({ x: acc.x + s.x, y: acc.y + s.y, z: acc.z + s.z }),
+        { x: 0, y: 0, z: 0 }
+      );
+      avg = { x: avg.x / samples.length, y: avg.y / samples.length, z: avg.z / samples.length };
+    }
+    baselineGravityRef.current = normalize(magnitude(avg) === 0 ? { x: 0, y: 0, z: 1 } : avg);
+    placementSamplesRef.current = [];
+    smoothedTiltRef.current = 0;
+    smoothedMotionRef.current = 0;
+    triggerHoldStartRef.current = null;
+    recoverHoldStartRef.current = null;
+
+    setJailState('locking');
+    lockTimeoutRef.current = setTimeout(() => {
+      lockTimeoutRef.current = null;
+      beginActiveSession();
+    }, LOCK_DISPLAY_MS);
+  }, [setJailState, beginActiveSession]);
+
+  const lockJailRef = useRef(lockJail);
+  useEffect(() => {
+    lockJailRef.current = lockJail;
+  }, [lockJail]);
+
   const handleMotionSample = useCallback((data: DeviceMotionMeasurement) => {
     const gravity: Vec3 = data.accelerationIncludingGravity ?? ZERO_VEC;
     const linear: Vec3 = data.acceleration ?? ZERO_VEC;
@@ -229,8 +305,44 @@ export function useJailSession(
     const currentState = stateRef.current;
     const s = settingsRef.current;
 
-    if (currentState === 'calibrating') {
-      calibrationSamplesRef.current.push(gravity);
+    if (currentState === 'awaiting-placement') {
+      // Waiting for the phone to be physically placed inside the jail:
+      // approximately flat (face-down/up) and stationary for a hold period.
+      const gravMag = magnitude(gravity);
+      const flatFraction = gravMag > 0 ? Math.abs(gravity.z) / gravMag : 0;
+      const motionMag = magnitude(linear);
+      smoothedMotionRef.current =
+        SMOOTHING_ALPHA * motionMag + (1 - SMOOTHING_ALPHA) * smoothedMotionRef.current;
+
+      const isPlaced =
+        flatFraction >= PLACEMENT_FLAT_MIN_FRACTION &&
+        smoothedMotionRef.current < PLACEMENT_MOTION_MAX_MPS2 &&
+        gravMag > 1;
+
+      if (isPlaced) {
+        placementSamplesRef.current.push(gravity);
+        // Keep only a recent window of samples for the baseline.
+        if (placementSamplesRef.current.length > 40) placementSamplesRef.current.shift();
+        if (placementHoldStartRef.current === null) placementHoldStartRef.current = now;
+        else if (now - placementHoldStartRef.current >= PLACEMENT_STABILIZE_MS) {
+          placementHoldStartRef.current = null;
+          lockJailRef.current();
+        }
+      } else {
+        placementHoldStartRef.current = null;
+        placementSamplesRef.current = [];
+      }
+
+      setDebug({
+        gravity,
+        linearAccel: linear,
+        tiltDeg: 0,
+        tiltSmoothedDeg: 0,
+        motionMag,
+        motionSmoothedMps2: smoothedMotionRef.current,
+        triggerHoldMs: placementHoldStartRef.current ? now - placementHoldStartRef.current : 0,
+        recoverHoldMs: 0,
+      });
       return;
     }
 
@@ -304,9 +416,6 @@ export function useJailSession(
       }
     }
 
-    const holdRef =
-      currentState === 'active' ? triggerHoldStartRef.current : recoverHoldStartRef.current;
-
     setDebug({
       gravity,
       linearAccel: linear,
@@ -320,62 +429,16 @@ export function useJailSession(
     });
   }, [setJailState]);
 
-  // Hard mode: watch for jailbreak and immediately fail the session.
-  useEffect(() => {
-    if (state === 'jailbreak' && settingsRef.current.hardMode) {
-      finishSession('failed', 'failed');
-    }
-  }, [state, finishSession]);
-
-  const finishCalibration = useCallback(() => {
-    const samples = calibrationSamplesRef.current;
-    const settleCount = Math.min(
-      samples.length,
-      Math.round((CALIBRATION_SETTLE_SECONDS / CALIBRATION_SECONDS) * samples.length) || samples.length
-    );
-    const settled = samples.slice(-settleCount);
-    let avg: Vec3 = { x: 0, y: 0, z: 0 };
-    if (settled.length > 0) {
-      avg = settled.reduce(
-        (acc, s) => ({ x: acc.x + s.x, y: acc.y + s.y, z: acc.z + s.z }),
-        { x: 0, y: 0, z: 0 }
-      );
-      avg = { x: avg.x / settled.length, y: avg.y / settled.length, z: avg.z / settled.length };
-    }
-    baselineGravityRef.current = normalize(magnitude(avg) === 0 ? { x: 0, y: 0, z: 1 } : avg);
-    calibrationSamplesRef.current = [];
-    smoothedTiltRef.current = 0;
-    smoothedMotionRef.current = 0;
-    triggerHoldStartRef.current = null;
-    recoverHoldStartRef.current = null;
-
-    const totalSeconds = selectedDurationRef.current * 60;
-    setRemainingSeconds(totalSeconds);
-    const start = Date.now();
-    startTimeRef.current = start;
-    setStats((s) => ({ ...s, startTime: start, elapsedFocusSeconds: 0 }));
-    setJailState('active');
-
-    sessionIntervalRef.current = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 0) return 0;
-        const next = prev - 1;
-        if (next === 0) {
-          // Timer completed normally.
-          if (sessionIntervalRef.current) clearInterval(sessionIntervalRef.current);
-          sessionIntervalRef.current = null;
-          stopMotionListener();
-          deactivateKeepAwake();
-          finishSession('completed', 'completed');
-        }
-        return next;
-      });
-    }, 1000);
-  }, [setJailState, stopMotionListener, finishSession]);
-
+  /**
+   * Starts a session in the awaiting-placement state. The timer does NOT
+   * start here — it starts only after the phone is detected face-down and
+   * stationary inside the jail (see lockJail / beginActiveSession).
+   */
   const startJail = useCallback(async (overrideMinutes?: number) => {
     clearAllTimers();
-    calibrationSamplesRef.current = [];
+    placementSamplesRef.current = [];
+    placementHoldStartRef.current = null;
+    smoothedMotionRef.current = 0;
     const chosen = overrideMinutes ?? durationMinutes;
     selectedDurationRef.current = chosen;
     startTimeRef.current = null;
@@ -389,39 +452,32 @@ export function useJailSession(
       jailbreakCount: 0,
       status: 'completed',
     });
-    setCalibrationSecondsLeft(CALIBRATION_SECONDS);
-    setJailState('calibrating');
+    setJailState('awaiting-placement');
     await activateKeepAwakeAsync();
 
     await DeviceMotion.setUpdateInterval(SENSOR_UPDATE_INTERVAL_MS);
     stopMotionListener();
     motionSubRef.current = DeviceMotion.addListener(handleMotionSample);
-
-    calibrationIntervalRef.current = setInterval(() => {
-      setCalibrationSecondsLeft((prev) => {
-        if (prev <= 1) {
-          if (calibrationIntervalRef.current) clearInterval(calibrationIntervalRef.current);
-          calibrationIntervalRef.current = null;
-          finishCalibration();
-          return 0;
-        }
-        return prev - 1;
-      });
-      if (settingsRef.current.hapticsEnabled) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-    }, 1000);
-  }, [durationMinutes, finishCalibration, handleMotionSample, setJailState, stopMotionListener, clearAllTimers]);
+  }, [durationMinutes, handleMotionSample, setJailState, stopMotionListener, clearAllTimers]);
 
   const endJail = useCallback(() => {
     finishSession('ended-early', 'completed');
   }, [finishSession]);
 
+  /** Abort before the jail ever locked (no timer ran, nothing to record). */
+  const cancelPlacement = useCallback(() => {
+    clearAllTimers();
+    stopMotionListener();
+    deactivateKeepAwake();
+    placementHoldStartRef.current = null;
+    placementSamplesRef.current = [];
+    setJailState('idle');
+  }, [clearAllTimers, stopMotionListener, setJailState]);
+
   const dismissEnd = useCallback(() => {
     setShouldAlarm(false);
     setJailState('idle');
     setRemainingSeconds(0);
-    setCalibrationSecondsLeft(CALIBRATION_SECONDS);
   }, [setJailState]);
 
   useEffect(() => {
@@ -433,18 +489,22 @@ export function useJailSession(
     };
   }, [clearAllTimers, stopMotionListener]);
 
+  const maxStrikes = settings.hardMode ? 1 : MAX_STRIKES;
+
   return {
     state,
     durationMinutes,
     setDurationMinutes,
-    calibrationSecondsLeft,
     remainingSeconds,
     debug,
     shouldAlarm,
     warningDeadline,
     stats,
+    strikes: stats.jailbreakCount,
+    maxStrikes,
     startJail,
     endJail,
+    cancelPlacement,
     dismissEnd,
   };
 }

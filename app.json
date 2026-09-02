@@ -3,11 +3,19 @@
     "name": "PhoneJail",
     "slug": "PhoneJail",
     "version": "1.0.0",
+    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
+        "NSPhotoLibraryAddUsageDescription": "Allow $(PRODUCT_NAME) to save photos",
+        "NSCameraUsageDescription": "Allow PhoneJail to use your camera to place your virtual jail on a real surface.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use your microphone"
+      },
+      "bundleIdentifier": "com.aadee7.PhoneJail"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +24,14 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.aadee7.PhoneJail"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,11 +46,20 @@
       ],
       "expo-asset",
       [
-        "expo-camera",
+        "@reactvision/react-viro",
         {
-          "cameraPermission": "Allow PhoneJail to use your camera to place your virtual jail on a physical surface."
+          "provider": "none",
+          "ios": {
+            "cameraUsagePermission": "Allow PhoneJail to use your camera to place your virtual jail on a real surface."
+          },
+          "android": {
+            "xRMode": [
+              "AR"
+            ]
+          }
         }
-      ]
+      ],
+      "./plugins/withViroNewArchPodfileEnv.js"
     ]
   }
 }

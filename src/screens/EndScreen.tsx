@@ -15,9 +15,9 @@ export function EndScreen({ status, stats, onDone, onHistory }: Props) {
   const isEarly = status === 'ended-early';
   const isCompleted = status === 'completed';
 
-  const title = isFailed ? 'Jailbreak Failed' : isEarly ? 'Session Ended' : 'Sentence Served';
+  const title = isFailed ? 'SENTENCE FAILED' : isEarly ? 'Session Ended' : 'SENTENCE SERVED';
   const subtitle = isFailed
-    ? 'Hard mode gave no second chances.'
+    ? 'Too many jailbreaks. The jail could not hold you.'
     : isEarly
       ? 'You left early. Your progress is still saved.'
       : `You stayed focused for ${formatTime(stats.elapsedFocusSeconds)}.`;
@@ -49,7 +49,7 @@ export function EndScreen({ status, stats, onDone, onHistory }: Props) {
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{stats.jailbreakCount}</Text>
-          <Text style={styles.summaryLabel}>jailbreaks</Text>
+          <Text style={styles.summaryLabel}>strikes</Text>
         </View>
       </View>
 

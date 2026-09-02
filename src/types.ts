@@ -17,6 +17,7 @@ export interface SessionRecord {
   completedDurationSeconds: number;
   status: 'completed' | 'ended-early' | 'failed';
   warningsCount: number;
+  /** Number of full jailbreaks — this is the session's strike count. */
   jailbreakCount: number;
 }
 
@@ -29,25 +30,14 @@ export interface HomeStats {
 
 export type JailState =
   | 'idle'
-  | 'calibrating'
+  | 'awaiting-placement'
+  | 'locking'
   | 'active'
   | 'warning'
   | 'jailbreak'
   | 'returned'
   | 'completed'
   | 'failed';
-
-export type AppScreen =
-  | 'home'
-  | 'calibrating'
-  | 'active'
-  | 'warning'
-  | 'jailbreak'
-  | 'returned'
-  | 'completed'
-  | 'failed'
-  | 'history'
-  | 'settings';
 
 export interface DebugSnapshot {
   gravity: { x: number; y: number; z: number };
