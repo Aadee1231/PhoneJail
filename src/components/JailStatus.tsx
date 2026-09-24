@@ -8,8 +8,8 @@ interface Props {
 /** Small status pill, e.g. "VIRTUAL JAIL ACTIVE". */
 export function JailStatus({ label, color }: Props) {
   return (
-    <View style={styles.pill}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
+    <View style={styles.pill} accessible accessibilityLabel={label}>
+      <View style={[styles.dot, { backgroundColor: color, shadowColor: color }]} />
       <Text style={styles.text}>{label}</Text>
     </View>
   );
@@ -17,26 +17,33 @@ export function JailStatus({ label, color }: Props) {
 
 const styles = StyleSheet.create({
   pill: {
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(127,169,213,0.06)',
+    paddingVertical: 9,
+    paddingHorizontal: 15,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(153,187,223,0.16)',
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 9,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 10,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
+    shadowRadius: 6,
   },
   text: {
-    color: '#f5f6fa',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.2,
+    flexShrink: 1,
+    color: '#CEDFF1',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.7,
     textTransform: 'uppercase',
+    textAlign: 'center',
   },
 });

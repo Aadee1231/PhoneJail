@@ -6,7 +6,6 @@ export interface Settings {
   warningGraceMs: WarningGrace;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
-  hardMode: boolean;
 }
 
 export interface SessionRecord {
@@ -17,7 +16,8 @@ export interface SessionRecord {
   completedDurationSeconds: number;
   status: 'completed' | 'ended-early' | 'failed';
   warningsCount: number;
-  /** Number of full jailbreaks — this is the session's strike count. */
+  /** Number of full jailbreaks during the session. Informational only —
+   *  does not affect session outcome. */
   jailbreakCount: number;
 }
 
@@ -30,7 +30,7 @@ export interface HomeStats {
 
 export type JailState =
   | 'idle'
-  | 'awaiting-placement'
+  | 'placement-confirmed'
   | 'locking'
   | 'active'
   | 'warning'

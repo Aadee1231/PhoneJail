@@ -1,5 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { VirtualJail } from '../components/VirtualJail';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { HolographicJailGraphic } from '../components/HolographicJailPreview';
 import { SessionTimer } from '../components/SessionTimer';
 import { JailStatus } from '../components/JailStatus';
 import { DebugPanel } from '../components/DebugPanel';
@@ -13,22 +13,38 @@ interface Props {
 }
 
 export function ActiveScreen({ remainingSeconds, progress, debug, endJail }: Props) {
+  const { width, height } = useWindowDimensions();
+  const heroSize = Math.max(140, Math.min(320, width - 48, height * 0.38));
+  const completed = Math.max(0, Math.min(1, progress));
+
   return (
     <View style={styles.container}>
-      <JailStatus label="Virtual Jail Active" color="#3b82f6" />
+      <JailStatus label="Virtual Jail Active" color="#68B6FF" />
 
       <View style={styles.hero}>
-        <VirtualJail mode="active" size={230} />
+        <HolographicJailGraphic mode="active" size={heroSize} />
       </View>
 
+      <Text style={styles.eyebrow}>TIME REMAINING</Text>
       <SessionTimer seconds={remainingSeconds} size="huge" />
+
+      <View
+        style={styles.progressTrack}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Focus session progress"
+        accessibilityValue={{ min: 0, max: 100, now: Math.round(completed * 100) }}
+      >
+        <View style={[styles.progressFill, { width: `${completed * 100}%` }]} />
+      </View>
+
       <Text style={styles.subtitle}>Don&apos;t touch your phone.</Text>
 
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-      </View>
-
-      <Pressable style={styles.endButton} onPress={endJail}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityHint="Ends the current focus session"
+        style={({ pressed }) => [styles.endButton, pressed && styles.endButtonPressed]}
+        onPress={endJail}
+      >
         <Text style={styles.endButtonText}>End Jail</Text>
       </Pressable>
 
@@ -41,39 +57,61 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   hero: {
-    marginVertical: 32,
+    marginTop: 18,
+    marginBottom: 14,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 2.4,
+    color: '#8FABC7',
+    textAlign: 'center',
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#7c8199',
+    lineHeight: 24,
+    color: '#B2C3D7',
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 32,
+    marginTop: 24,
+    marginBottom: 26,
   },
   progressTrack: {
-    width: '100%',
-    maxWidth: 260,
+    width: '78%',
+    maxWidth: 280,
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(119,166,217,0.16)',
     borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 36,
+    marginTop: 16,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#5BAAFF',
     borderRadius: 2,
   },
   endButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    minHeight: 48,
+    minWidth: 152,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(157,188,222,0.22)',
+    backgroundColor: 'rgba(145,182,224,0.04)',
+  },
+  endButtonPressed: {
+    backgroundColor: 'rgba(145,182,224,0.12)',
   },
   endButtonText: {
-    color: '#5a5f75',
-    fontSize: 13,
+    color: '#C3D3E5',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

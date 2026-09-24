@@ -16,10 +16,18 @@ interface Props {
 export function DebugPanel({ state, debug }: Props) {
   const [open, setOpen] = useState(false);
 
+  if (!__DEV__) return null;
+
   return (
     <View style={styles.wrapper}>
-      <Pressable onPress={() => setOpen(!open)} style={styles.toggle}>
-        <Text style={styles.toggleText}>{open ? '▼' : '▶'} Developer Debug</Text>
+      <Pressable
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => [styles.toggle, pressed && styles.togglePressed]}
+        accessibilityRole="button"
+        accessibilityLabel={open ? 'Hide diagnostics' : 'Show diagnostics'}
+        accessibilityState={{ expanded: open }}
+      >
+        <Text style={styles.toggleText}>{open ? 'Hide diagnostics' : 'Diagnostics'}</Text>
       </Pressable>
       {open && (
         <View style={styles.panel}>
@@ -50,27 +58,37 @@ const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
     maxWidth: 360,
-    marginTop: 24,
+    marginTop: 12,
   },
   toggle: {
+    minHeight: 44,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  togglePressed: {
+    backgroundColor: 'rgba(153,187,223,0.08)',
   },
   toggleText: {
-    color: '#5a5a6a',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#8EA3BA',
+    fontSize: 11,
+    fontWeight: '500',
   },
   panel: {
-    backgroundColor: '#101018',
+    backgroundColor: '#0D1828',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#1e1e2c',
+    borderColor: '#25364B',
   },
   text: {
-    color: '#6a6a7a',
+    color: '#B3C6DB',
     fontSize: 12,
-    fontFamily: 'Courier',
-    marginBottom: 3,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 5,
+    lineHeight: 18,
   },
 });

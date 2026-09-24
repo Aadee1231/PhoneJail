@@ -1,0 +1,334 @@
+{
+  "generator": "python3 scripts/generate-jail-assets.py",
+  "units": "meters",
+  "axes": {
+    "up": "+y",
+    "front": "+z",
+    "origin": "chamber bottom center; lock independently centered"
+  },
+  "chamber_dimensions_m": [
+    0.23,
+    0.11,
+    0.14
+  ],
+  "lock_parent_position_m": [
+    0,
+    0.056,
+    0.045
+  ],
+  "obj_contract": "ASCII triangles; separate indexed v/vt/vn; no MTL dependency; apply one explicit material to each OBJ",
+  "materials": {
+    "phone-jail-panels.obj": {
+      "suggested_name": "jailPanels",
+      "diffuse": "rgba(112,195,255,0.06)",
+      "blend": "Alpha",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    },
+    "phone-jail-frame.obj": {
+      "suggested_name": "jailFrame",
+      "diffuse": "rgba(165,228,255,0.88)",
+      "blend": "Alpha",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    },
+    "phone-jail-guides.obj": {
+      "suggested_name": "jailGuides",
+      "diffuse": "rgba(112,218,255,0.65)",
+      "blend": "Add",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    },
+    "phone-jail-grid.obj": {
+      "suggested_name": "jailGrid",
+      "diffuse": "rgba(116,213,255,0.25)",
+      "blend": "Alpha",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    },
+    "phone-jail-lock.obj": {
+      "suggested_name": "jailLock",
+      "diffuse": "#FFFFFF",
+      "blend": "Alpha",
+      "lighting": "Constant or Blinn with scene lights for bevel highlights",
+      "cull": "None",
+      "depth_write": true
+    },
+    "phone-jail-halo.obj": {
+      "suggested_name": "jailHalo",
+      "texture": "halo.png",
+      "diffuse": "rgba(67,175,255,0.35)",
+      "blend": "Add",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    },
+    "phone-jail-edge-glow.obj": {
+      "suggested_name": "jailEdgeGlow",
+      "texture": "edge-glow.png",
+      "diffuse": "rgba(60,163,255,0.20)",
+      "blend": "Add",
+      "lighting": "Constant",
+      "cull": "None",
+      "depth_write": false
+    }
+  },
+  "grid_texture_usage": "Optional plane overlay: grid.png is one seamless 10mm tile, white RGB with alpha; tint blue-cyan and repeat U/V at plane dimensions / 0.01. Prefer floor mesh or texture, not both at full opacity.",
+  "rendering_status": "Geometry and files validated offline; actual Viro rendering requires device verification.",
+  "models": {
+    "phone-jail-panels.obj": {
+      "vertices": 8,
+      "uvs": 4,
+      "normals": 6,
+      "triangles": 12,
+      "bounds_min_m": [
+        -0.1141,
+        0.0009,
+        -0.0691
+      ],
+      "bounds_max_m": [
+        0.1141,
+        0.1091,
+        0.0691
+      ],
+      "dimensions_m": [
+        0.2282,
+        0.1082,
+        0.1382
+      ],
+      "groups": {
+        "front": 2,
+        "back": 2,
+        "right": 2,
+        "left": 2,
+        "ceiling": 2,
+        "floor": 2
+      },
+      "bytes": 966,
+      "sha256": "adf5f9e7faf83afb2a4d61832a71655607f8172b63d7cddab9811419d7da220c"
+    },
+    "phone-jail-frame.obj": {
+      "vertices": 2008,
+      "uvs": 114,
+      "normals": 574,
+      "triangles": 3968,
+      "bounds_min_m": [
+        -0.115,
+        0.0,
+        -0.07
+      ],
+      "bounds_max_m": [
+        0.115,
+        0.11,
+        0.07
+      ],
+      "dimensions_m": [
+        0.23,
+        0.11,
+        0.14
+      ],
+      "groups": {
+        "lower_chamfered_rim": 832,
+        "upper_chamfered_rim": 832,
+        "corner_columns": 128,
+        "inset_precision_trim": 1664,
+        "corner_joinery": 512
+      },
+      "bytes": 234744,
+      "sha256": "758c75e2b1d454901ef115238a4d80535e5863b13c9465eb97ddf737cedf3b2d"
+    },
+    "phone-jail-guides.obj": {
+      "vertices": 136,
+      "uvs": 64,
+      "normals": 132,
+      "triangles": 256,
+      "bounds_min_m": [
+        -0.1227,
+        0.0003,
+        -0.0777
+      ],
+      "bounds_max_m": [
+        0.1227,
+        0.0017,
+        0.0777
+      ],
+      "dimensions_m": [
+        0.2454,
+        0.0014,
+        0.1554
+      ],
+      "groups": {
+        "alignment_corner_-1_-1": 64,
+        "alignment_corner_-1_1": 64,
+        "alignment_corner_1_-1": 64,
+        "alignment_corner_1_1": 64
+      },
+      "bytes": 20052,
+      "sha256": "6cd92888e14afff80da4d51eb67d8b192894340c953e16a2593ae3d2cb3ac01a"
+    },
+    "phone-jail-grid.obj": {
+      "vertices": 584,
+      "uvs": 4,
+      "normals": 306,
+      "triangles": 916,
+      "bounds_min_m": [
+        -0.108,
+        0.0011,
+        -0.065
+      ],
+      "bounds_max_m": [
+        0.108,
+        0.0018,
+        0.065
+      ],
+      "dimensions_m": [
+        0.216,
+        0.0007,
+        0.13
+      ],
+      "groups": {
+        "fine_floor_grid": 68,
+        "inner_alignment_border": 832,
+        "alignment_ticks": 16
+      },
+      "bytes": 62959,
+      "sha256": "4e9d82cc7d126bae7b0786355261992e45c0a1da637b13be0467f741ede9609a"
+    },
+    "phone-jail-lock.obj": {
+      "vertices": 4338,
+      "uvs": 2644,
+      "normals": 3137,
+      "triangles": 8672,
+      "bounds_min_m": [
+        -0.0225,
+        -0.03,
+        -0.0028
+      ],
+      "bounds_max_m": [
+        0.0225,
+        0.03,
+        0.0028
+      ],
+      "dimensions_m": [
+        0.045,
+        0.06,
+        0.0056
+      ],
+      "groups": {
+        "rear_outer_bevel": 880,
+        "rear_annulus": 880,
+        "rear_keyhole_bevel": 880,
+        "open_keyhole_wall": 880,
+        "front_keyhole_bevel": 880,
+        "front_annulus": 880,
+        "front_outer_bevel": 880,
+        "rounded_body_wall": 880,
+        "rounded_u_shackle": 1632
+      },
+      "bytes": 749032,
+      "sha256": "58f249d352961c7b16c11b2b991da273674a335f212f34fa90be0424f81a8e99"
+    },
+    "phone-jail-halo.obj": {
+      "vertices": 4,
+      "uvs": 4,
+      "normals": 1,
+      "triangles": 2,
+      "bounds_min_m": [
+        -0.145,
+        0.0002,
+        -0.1
+      ],
+      "bounds_max_m": [
+        0.145,
+        0.0002,
+        0.1
+      ],
+      "dimensions_m": [
+        0.29,
+        0.0,
+        0.2
+      ],
+      "groups": {
+        "phone-jail-halo": 2
+      },
+      "bytes": 380,
+      "sha256": "7ae2220c1165a2d927fc884fe6a21777138ba36be9a96b089e9d0704afb0e9df"
+    },
+    "phone-jail-edge-glow.obj": {
+      "vertices": 96,
+      "uvs": 4,
+      "normals": 6,
+      "triangles": 48,
+      "bounds_min_m": [
+        -0.11605,
+        0.0,
+        -0.07105
+      ],
+      "bounds_max_m": [
+        0.11605,
+        0.11,
+        0.07105
+      ],
+      "dimensions_m": [
+        0.2321,
+        0.11,
+        0.1421
+      ],
+      "groups": {
+        "phone-jail-edge-glow": 48
+      },
+      "bytes": 5225,
+      "sha256": "f366c9bbbcb5040aa08d04190ce5b98899e657e726e42305587a475bcc52e6f2"
+    }
+  },
+  "textures": {
+    "halo.png": {
+      "width": 512,
+      "height": 384,
+      "rgb": "white; tint in material",
+      "alpha_min": 0,
+      "alpha_max": 184,
+      "center_alpha": 0
+    },
+    "grid.png": {
+      "width": 256,
+      "height": 256,
+      "rgb": "white; tint in material",
+      "alpha_min": 0,
+      "alpha_max": 168,
+      "center_alpha": 0
+    },
+    "edge-glow.png": {
+      "width": 128,
+      "height": 16,
+      "rgb": "white; tint in material",
+      "alpha_min": 0,
+      "alpha_max": 253,
+      "center_alpha": 253
+    }
+  },
+  "alarm": {
+    "file": "assets/sounds/containment-alarm.wav",
+    "sample_rate": 44100,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "seconds": 2,
+    "peak_dbfs": -0.99989,
+    "rms_dbfs": -3.49151,
+    "endpoint_samples": [
+      0,
+      0
+    ],
+    "fade_ms": 25,
+    "sweep_hz": [
+      620,
+      900
+    ],
+    "sweep_cycles": 2,
+    "clipped_samples": 0
+  }
+}

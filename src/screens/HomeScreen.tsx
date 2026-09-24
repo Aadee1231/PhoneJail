@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { VirtualJail } from '../components/VirtualJail';
 import { HomeStats } from '../types';
-import { formatFocusTime } from '../util';
-import { parseCustom } from '../util';
+import { formatFocusTime, parseCustom } from '../util';
 
 const DURATIONS = [15, 30, 45, 60];
+
+function customInputWidth(text: string) {
+  return Math.max(40, text.length * 14 + 22);
+}
 
 interface Props {
   durationMinutes: number;
@@ -26,6 +28,14 @@ export function HomeScreen({
 }: Props) {
   const [isCustom, setIsCustom] = useState(false);
   const [customMinutes, setCustomMinutes] = useState(String(durationMinutes));
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (isCustom) {
+      const id = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(id);
+    }
+  }, [isCustom]);
 
   const onSelect = (d: number) => {
     setIsCustom(false);
@@ -55,84 +65,101 @@ export function HomeScreen({
 
   return (
     <View style={styles.container}>
-      <VirtualJail mode="idle" size={150} />
+      <View style={styles.topSection}>
+        <View style={styles.brandRow}>
+          <View style={styles.brandDot} />
+          <Text style={styles.brand}>PhoneJail</Text>
+        </View>
 
-      <View style={styles.brandRow}>
-        <View style={styles.brandDot} />
-        <Text style={styles.brand}>PHONEJAIL</Text>
+        <Text style={styles.headlineMain}>Put your phone down.</Text>
+        <Text style={styles.headlineSub}>Get your life back.</Text>
+
+        <View style={styles.statsCard}>
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{formatFocusTime(homeStats.todayFocusSeconds)}</Text>
+            <Text style={styles.statLabel}>Today</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{homeStats.currentStreak}</Text>
+            <Text style={styles.statLabel}>Streak</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.stat}>
+            <Text style={styles.statValue}>{homeStats.sessionsCompletedThisWeek}</Text>
+            <Text style={styles.statLabel}>This week</Text>
+          </View>
+        </View>
       </View>
 
-      <Text style={styles.taglineMain}>Put your phone down.</Text>
-      <Text style={styles.taglineSub}>Get your life back.</Text>
+      <View style={styles.middleSection}>
+        <Text style={styles.sectionLabel}>Session length</Text>
 
-      <View style={styles.statsCard}>
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{formatFocusTime(homeStats.todayFocusSeconds)}</Text>
-          <Text style={styles.statLabel}>Today</Text>
+        <View style={styles.chipsRow}>
+          {DURATIONS.map((d) => {
+            const selected = !isCustom && durationMinutes === d;
+            return (
+              <Pressable
+                key={d}
+                onPress={() => onSelect(d)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  selected && styles.chipSelected,
+                  pressed && styles.chipPressed,
+                ]}
+              >
+                <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                  {d} min
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{homeStats.currentStreak}</Text>
-          <Text style={styles.statLabel}>Streak</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.stat}>
-          <Text style={styles.statValue}>{homeStats.sessionsCompletedThisWeek}</Text>
-          <Text style={styles.statLabel}>This week</Text>
-        </View>
+
+        <Pressable
+          onPress={() => setIsCustom(true)}
+          style={({ pressed }) => [
+            styles.customChip,
+            isCustom && styles.customChipSelected,
+            pressed && styles.customChipPressed,
+          ]}
+        >
+          {isCustom ? (
+            <>
+              <TextInput
+                ref={inputRef}
+                style={[styles.customInput, { width: customInputWidth(customMinutes) }]}
+                value={customMinutes}
+                onChangeText={onCustomChange}
+                onFocus={onCustomFocus}
+                keyboardType="number-pad"
+                maxLength={3}
+                placeholder="45"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                textAlign="center"
+              />
+              <Text style={styles.customUnit}>min</Text>
+            </>
+          ) : (
+            <Text style={[styles.chipText, isCustom && styles.chipTextSelected]}>Custom</Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={onEnter}
+          style={({ pressed }) => [styles.enterButton, pressed && styles.enterButtonPressed]}
+        >
+          <Text style={styles.enterButtonText}>Enter Jail</Text>
+        </Pressable>
       </View>
-
-      <Text style={styles.sectionLabel}>Sentence length</Text>
-      <View style={styles.row}>
-        {DURATIONS.map((d) => (
-          <Pressable
-            key={d}
-            onPress={() => onSelect(d)}
-            style={[
-              styles.chip,
-              !isCustom && durationMinutes === d && styles.chipSelected,
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                !isCustom && durationMinutes === d && styles.chipTextSelected,
-              ]}
-            >
-              {d} min
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Pressable
-        onPress={() => setIsCustom(true)}
-        style={[styles.customChip, isCustom && styles.customChipSelected]}
-      >
-        <Text style={[styles.customLabel, isCustom && styles.customLabelActive]}>Custom</Text>
-        <TextInput
-          style={[styles.customInput, isCustom && styles.customInputActive]}
-          value={customMinutes}
-          onChangeText={onCustomChange}
-          onFocus={onCustomFocus}
-          keyboardType="number-pad"
-          maxLength={3}
-          placeholder="45"
-          placeholderTextColor="#5a5a6a"
-        />
-        <Text style={[styles.customUnit, isCustom && styles.customUnitActive]}>min</Text>
-      </Pressable>
-
-      <Pressable style={styles.enterButton} onPress={onEnter}>
-        <Text style={styles.enterButtonText}>Enter Jail</Text>
-      </Pressable>
 
       <View style={styles.footer}>
-        <Pressable style={styles.link} onPress={onHistory}>
-          <Text style={styles.linkText}>History</Text>
+        <Pressable onPress={onHistory} style={({ pressed }) => [styles.footerLink, pressed && styles.footerLinkPressed]}>
+          <Text style={styles.footerLinkText}>History</Text>
         </Pressable>
-        <Pressable style={styles.link} onPress={onSettings}>
-          <Text style={styles.linkText}>Settings</Text>
+        <View style={styles.footerDot} />
+        <Pressable onPress={onSettings} style={({ pressed }) => [styles.footerLink, pressed && styles.footerLinkPressed]}>
+          <Text style={styles.footerLinkText}>Settings</Text>
         </Pressable>
       </View>
     </View>
@@ -141,53 +168,68 @@ export function HomeScreen({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'space-between',
     width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
+  topSection: {
+    width: '100%',
+    alignItems: 'center',
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 14,
+    marginBottom: 22,
   },
   brandDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#3b82f6',
-    marginRight: 9,
+    backgroundColor: '#2E9DFF',
+    marginRight: 10,
+    shadowColor: '#2E9DFF',
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
   },
   brand: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#7c8199',
-    letterSpacing: 2.5,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#8A9CB0',
+    letterSpacing: 0.5,
   },
-  taglineMain: {
-    fontSize: 32,
+  headlineMain: {
+    fontSize: 34,
     fontWeight: '800',
-    color: '#f5f6fa',
+    color: '#ffffff',
     textAlign: 'center',
-    lineHeight: 38,
+    lineHeight: 40,
   },
-  taglineSub: {
-    fontSize: 32,
+  headlineSub: {
+    fontSize: 34,
     fontWeight: '800',
-    color: '#5a5f75',
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 38,
+    lineHeight: 40,
+    marginBottom: 28,
   },
   statsCard: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 32,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 380,
+    backgroundColor: 'rgba(46,157,255,0.06)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(46,157,255,0.12)',
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+    shadowColor: '#2E9DFF',
+    shadowOpacity: 0.08,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 10 },
   },
   stat: {
     flex: 1,
@@ -195,121 +237,148 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
+    height: '60%',
+    alignSelf: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   statValue: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#f5f6fa',
+    color: '#ffffff',
     textAlign: 'center',
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
-    color: '#7c8199',
-    marginTop: 4,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
+  },
+  middleSection: {
+    width: '100%',
+    alignItems: 'center',
+    maxWidth: 380,
   },
   sectionLabel: {
-    color: '#7c8199',
+    alignSelf: 'flex-start',
     fontSize: 12,
     fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
     textTransform: 'uppercase',
     letterSpacing: 1.4,
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  row: {
+  chipsRow: {
     flexDirection: 'row',
+    width: '100%',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   chip: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(46,157,255,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: 'rgba(46,157,255,0.14)',
   },
   chipSelected: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
+    backgroundColor: '#2E9DFF',
+    borderColor: '#2E9DFF',
+    shadowColor: '#2E9DFF',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  chipPressed: {
+    opacity: 0.85,
   },
   chipText: {
-    color: '#9a9fb5',
     fontSize: 15,
     fontWeight: '700',
+    color: 'rgba(255,255,255,0.65)',
   },
   chipTextSelected: {
-    color: '#fff',
+    color: '#ffffff',
   },
   customChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(46,157,255,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    marginBottom: 32,
+    borderColor: 'rgba(46,157,255,0.14)',
+    marginBottom: 16,
   },
   customChipSelected: {
-    borderColor: '#3b82f6',
+    backgroundColor: 'rgba(46,157,255,0.12)',
+    borderColor: '#2E9DFF',
   },
-  customLabel: {
-    color: '#9a9fb5',
-    fontSize: 15,
-    fontWeight: '700',
-    marginRight: 10,
-  },
-  customLabelActive: {
-    color: '#fff',
+  customChipPressed: {
+    opacity: 0.85,
   },
   customInput: {
-    width: 56,
-    color: '#9a9fb5',
     fontSize: 17,
     fontWeight: '700',
-    textAlign: 'center',
+    color: '#ffffff',
     paddingVertical: 0,
   },
-  customInputActive: {
-    color: '#fff',
-  },
   customUnit: {
-    color: '#7c8199',
     fontSize: 15,
-    fontWeight: '600',
-  },
-  customUnitActive: {
-    color: '#fff',
+    fontWeight: '700',
+    color: '#ffffff',
+    marginLeft: 4,
   },
   enterButton: {
     width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#3b82f6',
-    paddingVertical: 20,
-    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    borderRadius: 20,
+    backgroundColor: '#2E9DFF',
+    shadowColor: '#2E9DFF',
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  enterButtonPressed: {
+    opacity: 0.85,
   },
   enterButtonText: {
-    color: '#fff',
     fontSize: 18,
     fontWeight: '800',
+    color: '#ffffff',
   },
   footer: {
     flexDirection: 'row',
-    gap: 32,
-    marginTop: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 8,
+    width: '100%',
   },
-  link: {
-    padding: 8,
+  footerLink: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
-  linkText: {
-    color: '#5a5f75',
+  footerLinkPressed: {
+    opacity: 0.6,
+  },
+  footerLinkText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  footerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
 });

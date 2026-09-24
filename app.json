@@ -2,6 +2,7 @@
   "expo": {
     "name": "PhoneJail",
     "slug": "PhoneJail",
+    "scheme": "phonejail",
     "version": "1.0.0",
     "newArchEnabled": true,
     "orientation": "portrait",
@@ -59,7 +60,16 @@
           }
         }
       ],
-      "./plugins/withViroNewArchPodfileEnv.js"
+      "./plugins/withViroNewArchPodfileEnv.js",
+      "./plugins/withPodDeploymentTarget.js",
+      [
+        "@clerk/expo",
+        {
+          "appleSignIn": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser"
     ]
   }
 }

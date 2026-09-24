@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { VirtualJail } from '../components/VirtualJail';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { HolographicJailGraphic } from '../components/HolographicJailPreview';
 import { SessionTimer } from '../components/SessionTimer';
 import { DebugPanel } from '../components/DebugPanel';
 import { DebugSnapshot } from '../types';
@@ -8,25 +7,13 @@ import { JAILBREAK_STABILIZE_MS } from '../constants';
 
 interface Props {
   remainingSeconds: number;
-  strikes: number;
-  maxStrikes: number;
   debug: DebugSnapshot;
   endJail: () => void;
 }
 
-export function JailbreakScreen({ remainingSeconds, strikes, maxStrikes, debug, endJail }: Props) {
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.06, duration: 450, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 450, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [pulse]);
+export function JailbreakScreen({ remainingSeconds, debug, endJail }: Props) {
+  const { width, height } = useWindowDimensions();
+  const heroSize = Math.max(140, Math.min(300, width - 48, height * 0.32));
 
   // Recovery countdown: seconds of stillness remaining before the session
   // resumes. Counts down only while the phone is actually back at rest.
@@ -36,25 +23,34 @@ export function JailbreakScreen({ remainingSeconds, strikes, maxStrikes, debug, 
 
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
-        <VirtualJail mode="jailbreak" size={200} />
-      </View>
-
-      <Animated.Text style={[styles.title, { transform: [{ scale: pulse }] }]}>
-        JAILBREAK
-      </Animated.Text>
+      <Text style={styles.title} accessibilityRole="header">JAILBREAK</Text>
       <Text style={styles.subtitle}>PUT YOUR PHONE BACK</Text>
 
-      <Text style={styles.recoverCount}>{recoverRemainingSec}</Text>
-      <Text style={styles.recoverLabel}>to recover</Text>
+      <View style={styles.hero}>
+        <HolographicJailGraphic mode="jailbreak" size={heroSize} />
+      </View>
 
-      <Text style={styles.strikes}>
-        Strike {Math.min(strikes, maxStrikes)}/{maxStrikes}
-      </Text>
+      <View style={styles.recovery}>
+        <Text
+          style={styles.recoverCount}
+          accessibilityLabel={`${recoverRemainingSec} seconds of stillness remaining to resume`}
+        >
+          {recoverRemainingSec}<Text style={styles.unit}> s</Text>
+        </Text>
+        <Text style={styles.recoverLabel}>Keep it still to resume.</Text>
+      </View>
 
-      <SessionTimer seconds={remainingSeconds} size="medium" color="rgba(255,255,255,0.7)" />
+      <View style={styles.sessionTime}>
+        <Text style={styles.timerLabel}>Session remaining</Text>
+        <SessionTimer seconds={remainingSeconds} size="medium" color="#E6CDD2" />
+      </View>
 
-      <Pressable style={styles.endButton} onPress={endJail}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityHint="Ends the current focus session"
+        style={({ pressed }) => [styles.endButton, pressed && styles.endButtonPressed]}
+        onPress={endJail}
+      >
         <Text style={styles.endButtonText}>End Jail</Text>
       </Pressable>
 
@@ -67,57 +63,79 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   hero: {
-    marginTop: 4,
-    marginBottom: 4,
+    marginVertical: 12,
   },
   title: {
-    fontSize: 44,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 4,
+    fontSize: 38,
+    fontWeight: '600',
+    color: '#FFB8BF',
     textAlign: 'center',
-    letterSpacing: 2,
+    letterSpacing: 3,
   },
   subtitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#ffd9d5',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E5A2AC',
     textAlign: 'center',
-    marginBottom: 22,
-    letterSpacing: 1,
+    marginTop: 10,
+    letterSpacing: 1.8,
+  },
+  recovery: {
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 24,
   },
   recoverCount: {
     fontSize: 64,
-    fontWeight: '900',
-    color: '#fff',
+    fontWeight: '500',
+    color: '#FFE6E9',
+    letterSpacing: -2,
     fontVariant: ['tabular-nums'],
-    lineHeight: 68,
+  },
+  unit: {
+    fontSize: 24,
+    letterSpacing: 0,
+    color: '#D8A8B0',
   },
   recoverLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 18,
-  },
-  strikes: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 1,
-    marginBottom: 18,
-    textTransform: 'uppercase',
+    color: '#D8A8B0',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  sessionTime: {
+    alignItems: 'center',
+    width: '100%',
+    gap: 4,
+  },
+  timerLabel: {
+    fontSize: 12,
+    color: '#BE9FA8',
+    textAlign: 'center',
   },
   endButton: {
     marginTop: 22,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    minHeight: 48,
+    minWidth: 152,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(240,159,173,0.24)',
+    backgroundColor: 'rgba(240,159,173,0.04)',
+  },
+  endButtonPressed: {
+    backgroundColor: 'rgba(240,159,173,0.12)',
   },
   endButtonText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
+    color: '#E0BEC6',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SessionRecord } from '../types';
 import { formatDuration, formatFocusTime } from '../util';
+import { SwipeBackView } from '../components/SwipeBackView';
 
 interface Props {
   todayFocusSeconds: number;
@@ -16,8 +17,15 @@ function formatDate(ts: number): string {
 
 export function HistoryScreen({ todayFocusSeconds, weekFocusSeconds, sessions, onBack }: Props) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>History</Text>
+    <SwipeBackView onBack={onBack}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Pressable style={styles.backButton} onPress={onBack} hitSlop={12}>
+            <Text style={styles.backButtonText}>‹ Back</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.title}>History</Text>
 
       <View style={styles.totals}>
         <View style={styles.totalCard}>
@@ -56,11 +64,8 @@ export function HistoryScreen({ todayFocusSeconds, weekFocusSeconds, sessions, o
           ))
         )}
       </ScrollView>
-
-      <Pressable style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
-    </View>
+      </View>
+    </SwipeBackView>
   );
 }
 
@@ -69,6 +74,11 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     alignItems: 'center',
+  },
+  header: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   title: {
     fontSize: 28,
@@ -157,9 +167,8 @@ const styles = StyleSheet.create({
     color: '#34d399',
   },
   backButton: {
-    marginTop: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#3a3a4a',

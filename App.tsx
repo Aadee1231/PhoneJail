@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { ClerkProvider } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
+
+import { AuthGate } from './src/auth/AuthGate';
 
 import { useJailSession } from './src/useJailSession';
 import { useSettings } from './src/hooks/useSettings';
@@ -16,7 +20,7 @@ import { EndScreen } from './src/screens/EndScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 
-const sirenSound = require('./assets/sounds/siren.wav');
+const sirenSound = require('./assets/sounds/containment-alarm.wav');
 const warningBeepSound = require('./assets/sounds/warning_beep.wav');
 
 /**
@@ -27,10 +31,10 @@ const warningBeepSound = require('./assets/sounds/warning_beep.wav');
  */
 type Flow = 'home' | 'ar' | 'session' | 'history' | 'settings';
 
-export default function App() {
+function PhoneJailApp() {
   const [flow, setFlow] = useState<Flow>('home');
   const [graceMs, setGraceMs] = useState(0);
-  const [prevState, setPrevState] = useState<string>('idle');
+  const [audioReady, setAudioReady] = useState(false);
 
   const { settings, updateSetting } = useSettings();
   const { sessions, addSession, homeStats } = useSessionStore();
@@ -42,12 +46,11 @@ export default function App() {
     setDurationMinutes,
     remainingSeconds,
     debug,
-    shouldAlarm,
+    placementError,
     warningDeadline,
     stats,
-    strikes,
-    maxStrikes,
-    startJail,
+    alarmActive,
+    confirmJailPlacement,
     endJail,
     cancelPlacement,
     dismissEnd,
@@ -57,32 +60,96 @@ export default function App() {
   // even if the iOS silent switch is on). This cannot override the physical
   // volume buttons/system volume.
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    let cancelled = false;
+    setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' })
+      .then(() => { if (!cancelled) setAudioReady(true); })
+      .catch((error) => {
+        if (__DEV__) console.warn('[Audio] Unable to configure silent-mode playback', error);
+        if (!cancelled) setAudioReady(true);
+      });
+    return () => { cancelled = true; };
   }, []);
 
-  const sirenPlayer = useAudioPlayer(sirenSound);
+  // keepAudioSessionActive keeps the iOS audio session warm across pause/play
+  // so a re-triggered alarm starts instantly in a later jail session.
+  const sirenPlayer = useAudioPlayer(sirenSound, { keepAudioSessionActive: true });
   const warningBeepPlayer = useAudioPlayer(warningBeepSound);
 
-  // Loop the siren continuously while Jailbreak is active; stop the instant
-  // the phone is returned.
+  const sirenArmed = useRef(false);
+
+  // Loop the siren continuously while the alarm latch is on. alarmActive is
+  // true for the whole 'jailbreak' state: it stays on while the phone is
+  // held/moving, and clears only when the stillness detector confirms the
+  // phone is back at rest (or on End Jail / timer completion). While armed, a
+  // lightweight retry keeps asserting play() until the native player reports
+  // playing, so a late asset load or a silent session failure self-heals
+  // instead of muting the alarm. A single shared player is reused — repeated
+  // triggers never create overlapping audio instances.
   useEffect(() => {
-    sirenPlayer.loop = true;
-    if (shouldAlarm && settings.soundEnabled) {
-      sirenPlayer.seekTo(0);
-      sirenPlayer.play();
-    } else {
-      sirenPlayer.pause();
+    const wantsAlarm = alarmActive && settings.soundEnabled && audioReady;
+    if (!wantsAlarm) {
+      if (sirenArmed.current || sirenPlayer.playing) {
+        if (__DEV__) console.log('[Audio] alarm off — pausing siren');
+        sirenPlayer.pause();
+        sirenPlayer.seekTo(0).catch(() => {});
+      }
+      sirenArmed.current = false;
+      return;
     }
-  }, [shouldAlarm, settings.soundEnabled, sirenPlayer]);
+
+    if (!sirenArmed.current) {
+      if (__DEV__) console.log('[Audio] jailbreak alarm armed — looping at full volume');
+      // Re-assert the silent-mode-friendly audio session right before
+      // playback in case another part of the app changed it.
+      setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' })
+        .catch((error) => {
+          if (__DEV__) console.warn('[Audio] Unable to re-assert silent-mode playback', error);
+        });
+    }
+
+    let disposed = false;
+    let resetPending = true;
+    const tryPlay = () => {
+      if (disposed) return;
+      try {
+        sirenPlayer.loop = true;
+        sirenPlayer.volume = 1;
+        if (sirenPlayer.playing) {
+          sirenArmed.current = true;
+          return;
+        }
+        if (resetPending && sirenPlayer.isLoaded) {
+          resetPending = false;
+          sirenPlayer.seekTo(0).catch(() => {});
+        }
+        sirenPlayer.play();
+        sirenArmed.current = true;
+        if (__DEV__) console.log('[Audio] jailbreak alarm play() requested, loaded =', sirenPlayer.isLoaded);
+      } catch (error) {
+        if (__DEV__) console.warn('[Audio] Alarm play attempt failed', error);
+      }
+    };
+
+    tryPlay();
+    const retry = setInterval(tryPlay, 700);
+    return () => {
+      disposed = true;
+      clearInterval(retry);
+    };
+  }, [alarmActive, settings.soundEnabled, audioReady, sirenPlayer]);
 
   // Short, sharp beep the moment a movement warning begins.
   useEffect(() => {
-    if (state === 'warning' && prevState !== 'warning' && settings.soundEnabled) {
-      warningBeepPlayer.seekTo(0);
-      warningBeepPlayer.play();
+    let cancelled = false;
+    if (state === 'warning' && settings.soundEnabled && audioReady) {
+      warningBeepPlayer.seekTo(0).then(() => {
+        if (!cancelled) warningBeepPlayer.play();
+      }).catch((error) => {
+        if (__DEV__) console.warn('[Audio] Warning playback failed', error);
+      });
     }
-    setPrevState(state);
-  }, [state, prevState, settings.soundEnabled, warningBeepPlayer]);
+    return () => { cancelled = true; warningBeepPlayer.pause(); };
+  }, [state, settings.soundEnabled, audioReady, warningBeepPlayer]);
 
   // Live warning grace-period countdown.
   useEffect(() => {
@@ -97,7 +164,7 @@ export default function App() {
   }, [state, warningDeadline]);
 
   // Keep the top-level flow in sync with the session lifecycle: the AR view
-  // owns 'idle'/'awaiting-placement'/'locking'; everything after lock is the
+  // owns 'idle'/'placement-confirmed'/'locking'; everything after lock is the
   // session UI.
   useEffect(() => {
     if (flow === 'ar' && (state === 'active' || state === 'completed' || state === 'failed')) {
@@ -155,8 +222,6 @@ export default function App() {
         return (
           <JailbreakScreen
             remainingSeconds={remainingSeconds}
-            strikes={strikes}
-            maxStrikes={maxStrikes}
             debug={debug}
             endJail={endJail}
           />
@@ -186,7 +251,9 @@ export default function App() {
         <StatusBar style="light" />
         <ARJailPlacement
           sessionState={state}
-          onPlaceJail={() => startJail(durationMinutes)}
+          debug={debug}
+          placementError={placementError}
+          onConfirmJail={() => confirmJailPlacement(durationMinutes)}
           onCancel={handleCancelAR}
         />
       </View>
@@ -194,45 +261,93 @@ export default function App() {
   }
 
   return (
-    <View style={[styles.container, isEmergency && styles.emergencyBg]}>
+    <View style={[styles.container, state === 'warning' && styles.warningBg, isEmergency && styles.emergencyBg]}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={[styles.scroll, flow === 'session' && styles.sessionScroll]}
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
-        {flow === 'session' && renderSession()}
-        {flow === 'home' && (
-          <HomeScreen
-            durationMinutes={durationMinutes}
-            setDurationMinutes={setDurationMinutes}
-            onEnterJail={handleEnterJail}
-            homeStats={homeStats}
-            onHistory={() => setFlow('history')}
-            onSettings={() => setFlow('settings')}
-          />
-        )}
-        {flow === 'history' && (
-          <HistoryScreen
-            todayFocusSeconds={homeStats.todayFocusSeconds}
-            weekFocusSeconds={homeStats.weekFocusSeconds}
-            sessions={sessions}
-            onBack={() => setFlow('home')}
-          />
-        )}
-        {flow === 'settings' && (
-          <SettingsScreen settings={settings} updateSetting={updateSetting} onBack={() => setFlow('home')} />
-        )}
-      </ScrollView>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scroll, flow === 'session' && styles.sessionScroll, flow === 'home' && styles.homeScroll]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {flow === 'session' && renderSession()}
+          {flow === 'home' && (
+            <HomeScreen
+              durationMinutes={durationMinutes}
+              setDurationMinutes={setDurationMinutes}
+              onEnterJail={handleEnterJail}
+              homeStats={homeStats}
+              onHistory={() => setFlow('history')}
+              onSettings={() => setFlow('settings')}
+            />
+          )}
+          {flow === 'history' && (
+            <HistoryScreen
+              todayFocusSeconds={homeStats.todayFocusSeconds}
+              weekFocusSeconds={homeStats.weekFocusSeconds}
+              sessions={sessions}
+              onBack={() => setFlow('home')}
+            />
+          )}
+          {flow === 'settings' && (
+            <SettingsScreen settings={settings} updateSetting={updateSetting} onBack={() => setFlow('home')} />
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+export default function App() {
+  if (!publishableKey) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <Text style={styles.missingKeyText}>
+          Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY.{'\n'}Add it to .env.local and restart Metro.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <AuthGate>
+        <PhoneJailApp />
+      </AuthGate>
+    </ClerkProvider>
+  );
+}
+
 const styles = StyleSheet.create({
+  missingKeyText: {
+    color: '#ff8fa3',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginHorizontal: 32,
+    lineHeight: 24,
+  },
+  keyboard: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#08090f',
+    backgroundColor: '#060c16',
+  },
+  warningBg: {
+    backgroundColor: '#100e12',
   },
   emergencyBg: {
-    backgroundColor: '#5c0f0f',
+    backgroundColor: '#19090f',
   },
   scroll: {
     flexGrow: 1,
@@ -242,7 +357,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sessionScroll: {
-    paddingTop: 90,
-    justifyContent: 'flex-start',
+    paddingTop: 64,
+    paddingBottom: 36,
+    justifyContent: 'center',
+  },
+  homeScroll: {
+    paddingTop: 60,
+    paddingBottom: 28,
   },
 });

@@ -14,17 +14,17 @@ import { Settings, Sensitivity, WarningGrace } from './types';
 export const SENSOR_UPDATE_INTERVAL_MS = 100;
 
 // --- Phone placement detection (replaces the old fixed 5s calibration) ---
-// The phone must be approximately flat (face-down or face-up) for placement
+// The phone must be approximately flat (screen-up or screen-down) for placement
 // to count: |gravity z| / |gravity| must exceed this fraction. Sensor axis
-// sign conventions differ subtly between iOS and Android, so we accept both
-// flat orientations rather than strictly face-down; verify/tune on device.
+// sign conventions differ subtly between iOS and Android, and a user may place
+// the phone in either orientation, so we accept both flat orientations.
 export const PLACEMENT_FLAT_MIN_FRACTION = 0.85;
 // Smoothed linear-acceleration magnitude (m/s^2) below which the phone is
 // considered stationary while awaiting placement.
-export const PLACEMENT_MOTION_MAX_MPS2 = 0.2;
-// The flat + stationary conditions must hold continuously for this long
-// before we lock the jail and start the session.
-export const PLACEMENT_STABILIZE_MS = 2000;
+export const PLACEMENT_MOTION_MAX_MPS2 = 0.25;
+// The face-down + stationary conditions must hold continuously for this long
+// before we auto-confirm placement and lock the jail.
+export const PLACEMENT_STABILIZE_MS = 800;
 // How long the "JAIL LOCKED" confirmation is shown before the timer starts.
 export const LOCK_DISPLAY_MS = 1400;
 
@@ -68,11 +68,6 @@ export const RETURNED_DISPLAY_MS = 1200;
 // Interval (ms) between repeated haptic pulses while in the Jailbreak state.
 export const JAILBREAK_HAPTIC_INTERVAL_MS = 500;
 
-// --- Strikes ---
-// Each full Jailbreak is one strike. Reaching this many strikes immediately
-// fails the session. Hard mode overrides this to 1.
-export const MAX_STRIKES = 3;
-
 // --- Sensitivity ---
 // Multiplier applied to the base trigger/recovery thresholds. Lower values
 // make detection more sensitive (easier to trigger, harder to recover).
@@ -89,5 +84,4 @@ export const DEFAULT_SETTINGS: Settings = {
   warningGraceMs: 1000,
   soundEnabled: true,
   hapticsEnabled: true,
-  hardMode: false,
 };

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { VirtualJail } from '../components/VirtualJail';
+import { HolographicJailGraphic } from '../components/HolographicJailPreview';
 import { SessionRecord, SessionStats } from '../types';
 import { formatDuration, formatTime } from '../util';
 
@@ -17,14 +17,14 @@ export function EndScreen({ status, stats, onDone, onHistory }: Props) {
 
   const title = isFailed ? 'SENTENCE FAILED' : isEarly ? 'Session Ended' : 'SENTENCE SERVED';
   const subtitle = isFailed
-    ? 'Too many jailbreaks. The jail could not hold you.'
+    ? 'The session ended unexpectedly.'
     : isEarly
       ? 'You left early. Your progress is still saved.'
       : `You stayed focused for ${formatTime(stats.elapsedFocusSeconds)}.`;
 
   return (
     <View style={styles.container}>
-      <VirtualJail mode={isFailed ? 'failed' : 'completed'} size={180} />
+      <HolographicJailGraphic mode={isFailed ? 'jailbreak' : isCompleted ? 'success' : 'returned'} size={240} />
 
       <Text style={[styles.title, isFailed && styles.failedTitle]}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
@@ -49,7 +49,7 @@ export function EndScreen({ status, stats, onDone, onHistory }: Props) {
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{stats.jailbreakCount}</Text>
-          <Text style={styles.summaryLabel}>strikes</Text>
+          <Text style={styles.summaryLabel}>jailbreaks</Text>
         </View>
       </View>
 

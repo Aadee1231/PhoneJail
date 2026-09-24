@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Settings, Sensitivity, WarningGrace } from '../types';
+import { SwipeBackView } from '../components/SwipeBackView';
+import { AccountCard } from '../components/AccountCard';
 
 interface Props {
   settings: Settings;
@@ -21,8 +23,17 @@ const GRACES: { key: WarningGrace; label: string }[] = [
 
 export function SettingsScreen({ settings, updateSetting, onBack }: Props) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
+    <SwipeBackView onBack={onBack}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Pressable style={styles.backButton} onPress={onBack} hitSlop={12}>
+            <Text style={styles.backButtonText}>‹ Back</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.title}>Settings</Text>
+
+      <AccountCard />
 
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>Motion Sensitivity</Text>
@@ -85,25 +96,9 @@ export function SettingsScreen({ settings, updateSetting, onBack }: Props) {
             thumbColor="#fff"
           />
         </View>
-
-        <View style={styles.toggleRow}>
-          <View style={styles.toggleLeft}>
-            <Text style={styles.toggleLabel}>Hard Mode</Text>
-            <Text style={styles.hint}>A jailbreak immediately ends the session.</Text>
-          </View>
-          <Switch
-            value={settings.hardMode}
-            onValueChange={(v) => updateSetting('hardMode', v)}
-            trackColor={{ false: '#3a3a4a', true: '#ff5252' }}
-            thumbColor="#fff"
-          />
-        </View>
       </View>
-
-      <Pressable style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>Back</Text>
-      </Pressable>
-    </View>
+      </View>
+    </SwipeBackView>
   );
 }
 
@@ -112,6 +107,11 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     alignItems: 'center',
+  },
+  header: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   title: {
     fontSize: 28,
@@ -175,19 +175,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#232332',
   },
-  toggleLeft: {
-    flex: 1,
-    paddingRight: 10,
-  },
   toggleLabel: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
   },
   backButton: {
-    marginTop: 28,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#3a3a4a',

@@ -1,198 +1,160 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { ViroARSceneNavigator } from '@reactvision/react-viro';
 import { JailARScene } from './JailARScene';
-import { JailState } from '../types';
+import { DebugSnapshot, JailState } from '../types';
 
 interface Props {
-  /** Current jail session state ('idle' until Place Jail is tapped). */
+  /** Current jail session state. */
   sessionState: JailState;
-  /** User confirmed placement — begin awaiting physical phone placement. */
-  onPlaceJail: () => void;
+  /** Confirms the AR placement and starts the placement watch. */
+  onConfirmJail: () => Promise<boolean>;
+  /** Live motion debug snapshot from useJailSession. */
+  debug: DebugSnapshot;
   /** Abort the AR flow entirely. */
   onCancel: () => void;
+  placementError?: string | null;
 }
 
+const initialScene = { scene: JailARScene as any };
+
 /**
- * Full-screen AR placement flow: plane detection status -> surface selection
- * -> gesture adjustment -> "Place Jail" -> physical phone placement prompt ->
- * "JAIL LOCKED" confirmation.
+ * Full-screen AR placement flow: the jail lands immediately from a fallback
+ * world position, the user drags/pinches/rotates it, then tapping Place Jail
+ * confirms the placement. The session only starts once the phone is placed
+ * flat and still.
  */
-export function ARJailPlacement({ sessionState, onPlaceJail, onCancel }: Props) {
+export function ARJailPlacement({ sessionState, onConfirmJail, debug, onCancel, placementError }: Props) {
   const [trackingReady, setTrackingReady] = useState(false);
+  const [planeCount, setPlaneCount] = useState(0);
   const [planeSelected, setPlaneSelected] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [placed, setPlaced] = useState(false);
+  const confirming = useRef(false);
+  const cancelled = useRef(false);
 
-  const locked = sessionState === 'locking';
-  const awaitingPhone = placed && sessionState === 'awaiting-placement';
+  const locked = sessionState === 'locking' || sessionState === 'active';
+  const onPlaneSelected = useCallback((selected: boolean) => {
+    setPlaneSelected(selected);
+    // Procedural jail geometry is always ready once mounted; the model-ready
+    // flag is owned by onModelReady from VirtualJail3D, not by plane selection.
+    setModelError(null);
+  }, []);
+  const onModelReady = useCallback(() => setModelReady(true), []);
+  const viroAppProps = useMemo(() => ({
+    onTrackingReady: setTrackingReady,
+    onPlaneCountChange: setPlaneCount,
+    onPlaneSelected, onModelReady, onModelError: setModelError,
+    placed, locked,
+  }), [onPlaneSelected, onModelReady, placed, locked]);
 
-  const viroAppProps = useMemo(
-    () => ({
-      onTrackingReady: setTrackingReady,
-      onPlaneSelected: () => setPlaneSelected(true),
-      placed,
-      locked,
-    }),
-    [placed, locked]
-  );
+  const confirm = async () => {
+    if (confirming.current || !modelReady || !trackingReady || modelError || placed || locked) return;
+    confirming.current = true;
+    setPlaced(true);
+    const started = await onConfirmJail();
+    if (!cancelled.current && !started) setPlaced(false);
+    confirming.current = false;
+  };
+
+  const cancel = () => {
+    cancelled.current = true;
+    onCancel();
+  };
 
   let title = 'Find a flat surface';
-  let helper = 'Move your phone slowly to scan the area.';
-  if (trackingReady && !planeSelected) {
+  let helper = 'Move slowly over your desk to reveal a surface.';
+  let status = 'SCANNING';
+  if (trackingReady && planeCount > 0 && !planeSelected) {
     title = 'Select a surface';
-    helper = 'Tap a highlighted surface to place your jail.';
-  } else if (planeSelected && !placed) {
-    title = 'Place your jail';
-    helper = 'Drag to reposition. Pinch to resize. Rotate to align.';
-  } else if (awaitingPhone) {
-    title = 'Focus zone placed';
-    helper = 'Place your phone face-down inside to begin.';
+    helper = 'Tap the blue grid where your phone will rest.';
+    status = 'SURFACE FOUND';
+  } else if (sessionState === 'placement-confirmed') {
+    title = 'Place your phone';
+    helper = debug.triggerHoldMs > 0 ? 'Locking...' : 'Place your phone flat inside the jail to begin.';
+    status = 'READY TO CONTAIN';
+  } else if (planeSelected && !locked) {
+    title = modelReady ? 'Focus zone placed' : 'Building your focus zone';
+    helper = modelReady ? 'Drag to reposition. Pinch to resize. Rotate to align.' : 'Loading the containment chamber…';
+    status = 'ALIGN YOUR ZONE';
+  }
+  if (!trackingReady && planeSelected && !locked) {
+    helper = 'Tracking paused. Move slowly back toward your desk.';
   }
 
+  const error = modelError ?? placementError;
+  // The button is tappable as soon as the 3D jail is loaded and AR tracking is up.
+  const canConfirm = modelReady && trackingReady && !placed && !locked && !modelError;
+  const awaitingPhone = placed && sessionState === 'placement-confirmed';
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} pointerEvents="box-none">
       <ViroARSceneNavigator
-        style={StyleSheet.absoluteFill}
-        autofocus
-        initialScene={{ scene: JailARScene as any }}
-        viroAppProps={viroAppProps}
+        style={StyleSheet.absoluteFill} autofocus
+        initialScene={initialScene} viroAppProps={viroAppProps}
+        hdrEnabled bloomEnabled multisamplingEnabled
+        pbrEnabled={false} shadowsEnabled={false} occlusionMode="disabled"
       />
-
-      {/* Lock confirmation takes over the whole overlay briefly. */}
-      {locked ? (
-        <View style={styles.lockOverlay} pointerEvents="none">
-          <Text style={styles.lockTitle}>JAIL LOCKED</Text>
-        </View>
-      ) : (
-        <>
-          <View style={styles.header} pointerEvents="none">
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.helper}>{helper}</Text>
-          </View>
-
-          <Pressable style={styles.cancel} onPress={onCancel} hitSlop={12}>
+      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.topBar} pointerEvents="box-none">
+          {!locked && <Pressable style={styles.cancel} onPress={cancel} hitSlop={12} accessibilityRole="button">
             <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
-
-          <View style={styles.footer}>
-            {planeSelected && !placed && (
-              <>
-                <Text style={styles.reminder}>Turn your volume up.</Text>
-                <Pressable
-                  style={styles.primaryButton}
-                  onPress={() => {
-                    setPlaced(true);
-                    onPlaceJail();
-                  }}
-                >
-                  <Text style={styles.primaryButtonText}>Place Jail</Text>
-                </Pressable>
-              </>
-            )}
-            {awaitingPhone && (
-              <View style={styles.waitingPill}>
-                <View style={styles.waitingDot} />
-                <Text style={styles.waitingText}>Waiting for phone…</Text>
-              </View>
-            )}
+          </Pressable>}
+          <View style={styles.status} pointerEvents="none">
+            <View style={styles.dot} />
+            <Text style={styles.statusText}>{locked ? 'CONTAINED' : status}</Text>
           </View>
-        </>
-      )}
+        </View>
+        <View style={styles.footer} pointerEvents="box-none">
+          {/* Lock confirmation takes over the whole overlay briefly. */}
+          <View style={styles.copy} pointerEvents="none" accessibilityLiveRegion="polite">
+            <Text style={styles.eyebrow}>{locked ? 'FOCUS STARTS NOW' : 'PHONEJAIL / SPATIAL FOCUS'}</Text>
+            <Text style={[styles.title, locked && styles.lockTitle]}>{locked ? 'JAIL LOCKED' : title}</Text>
+            <Text style={styles.helper}>{locked ? 'Your time is yours again.' : helper}</Text>
+            {error && <Text style={styles.error}>{error}</Text>}
+          </View>
+          {!placed && !locked && <>
+            <Text style={styles.reminder} pointerEvents="none">Turn your volume up before you begin.</Text>
+            <Pressable
+              onPress={confirm} disabled={!canConfirm} accessibilityRole="button"
+              accessibilityState={{ disabled: !canConfirm }}
+              style={({ pressed }) => [styles.primaryButton, !canConfirm && styles.disabled, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryButtonText}>Place Jail</Text>
+            </Pressable>
+          </>}
+          {awaitingPhone && <View style={styles.waitingPill} pointerEvents="none">
+            <ActivityIndicator size="small" color="#78d4ff" />
+            <Text style={styles.waitingText}>Waiting for stillness. Timer has not started.</Text>
+          </View>}
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  header: {
-    position: 'absolute',
-    top: 76,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#f5f6fa',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  helper: {
-    fontSize: 14,
-    color: 'rgba(245,246,250,0.75)',
-    textAlign: 'center',
-  },
-  cancel: {
-    position: 'absolute',
-    top: 76,
-    left: 20,
-  },
-  cancelText: {
-    color: 'rgba(245,246,250,0.6)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 56,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  reminder: {
-    color: 'rgba(245,246,250,0.55)',
-    fontSize: 13,
-    marginBottom: 14,
-  },
-  primaryButton: {
-    width: '100%',
-    maxWidth: 320,
-    backgroundColor: '#3b82f6',
-    paddingVertical: 18,
-    borderRadius: 18,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  waitingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(10,12,20,0.6)',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 22,
-  },
-  waitingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3b82f6',
-    marginRight: 10,
-  },
-  waitingText: {
-    color: '#f5f6fa',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(8,9,15,0.55)',
-  },
-  lockTitle: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#f5f6fa',
-    letterSpacing: 3,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 0 },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  cancel: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 22, backgroundColor: 'rgba(6,12,22,0.62)' },
+  cancelText: { color: '#e6eff9', fontSize: 14, fontWeight: '500' },
+  status: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 14, borderRadius: 24, backgroundColor: 'rgba(6,12,22,0.72)' },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#72d8ff', marginRight: 8 },
+  statusText: { color: '#e5f5ff', fontSize: 9, letterSpacing: 1.6, fontWeight: '600' },
+  footer: { paddingHorizontal: 24, paddingBottom: 24, alignItems: 'center' },
+  copy: { width: '100%', maxWidth: 390, paddingHorizontal: 20, paddingVertical: 20, borderRadius: 24, backgroundColor: 'rgba(6,12,22,0.80)', marginBottom: 14 },
+  eyebrow: { color: '#79b4db', fontSize: 9, fontWeight: '600', letterSpacing: 2.1, textAlign: 'center', marginBottom: 10 },
+  title: { color: '#f4f9ff', fontSize: 24, fontWeight: '600', letterSpacing: -0.6, textAlign: 'center', marginBottom: 8 },
+  lockTitle: { fontSize: 32, letterSpacing: 1.4 },
+  helper: { color: '#bdcede', fontSize: 13, lineHeight: 20, textAlign: 'center' },
+  reminder: { color: '#eef4fb', fontSize: 12, textAlign: 'center', marginBottom: 12, textShadowColor: '#000', textShadowRadius: 4 },
+  primaryButton: { width: '100%', maxWidth: 340, minHeight: 52, justifyContent: 'center', alignItems: 'center', borderRadius: 26, backgroundColor: '#248aff' },
+  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.8 },
+  waitingPill: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 22, backgroundColor: 'rgba(6,12,22,0.8)' },
+  waitingText: { color: '#c3d7e8', fontSize: 11, flexShrink: 1 },
+  error: { color: '#ffb8ad', fontSize: 13, textAlign: 'center', marginTop: 10 },
 });
